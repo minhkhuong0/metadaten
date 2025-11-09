@@ -10,6 +10,9 @@ import json
 from lxml import etree
 import requests
 from uri_template import variable
+from bs4 import BeautifulSoup
+import urllib
+
 
 # === Namespaces ===
 namespaces = {
@@ -132,8 +135,8 @@ def check_rda_i2_01m_etree(file_path):
 def check_rda_r1_3_01d(format_text):
     if not format_text:
         return "nein"
-    valid = ['shapefile','geojson','gml','csv','xlsx','xml','rdf','wfs','wms','json']
-    return "ja" if any(v in format_text.lower() for v in valid) else "nein"
+    valid = ['application/x-esri-shapefile','application/geo+json','application/gml+xml','text/csv','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','text/xml','RDF','OGC:WFS','OGC:WMS','application/json']
+    return "ja" if any(v in format_text for v in valid) else "nein"
 
 def check_rda_a1_1_01d(d, z):
     return "ja" if any((u and u.startswith(('http','https','ftp'))) for u in [d,z]) else "nein"
@@ -168,8 +171,8 @@ def popup(title: str, geo_desc: str):
     container.pack(side='top', fill='both', expand=True)
 
     page0 = ttk.Frame(container)
-    page1 = ttk.Frame(container)  
-    page2 = ttk.Frame(container)  
+    page1 = ttk.Frame(container)
+    page2 = ttk.Frame(container)
 
     for p in (page0, page1, page2):
         p.place(relx=0, rely=0, relwidth=1, relheight=1)
@@ -232,10 +235,10 @@ def popup(title: str, geo_desc: str):
 
     def sammeln_und_schliessen():
         # Kategorien zusammensetzen
-        category = ', '.join([k for k, v in kategorien.items() if v.get()])
+        category = '; '.join([k for k, v in kategorien.items() if v.get()])
         data = {
             'Kategorie': category,
-            'Bundesland': bundesland.get(),                
+            'Bundesland': bundesland.get(),
             'enthält synthetische Daten': 'ja' if synthetische_daten.get() else 'nein',
             'ist zugänglich ohne Zahlung': 'ja' if ohne_zahlung.get() else 'nein',
             'ist zugänglich ohne Registrierung': 'ja' if ohne_registrierung.get() else 'nein',
@@ -272,6 +275,59 @@ def popup(title: str, geo_desc: str):
     root.mainloop()
     return result_holder['data']
 
+# === Scrape opengeodata.nrw.de for download links ===
+
+def get_download_urls(url):
+    headers = {
+        'Accept': 'application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+    }
+    web = requests.get(url, headers=headers, allow_redirects=True)
+    if web.status_code != 200:
+        return 'Zugriffs-URL nicht erreichbar'
+
+    soup = BeautifulSoup(web.text, "xml")
+    files = soup.find_all('files')[1]
+
+    download_urls = []
+    for file in files:
+        if file.name == None:
+            continue
+        download_urls.append(urllib.parse.urljoin(web.url,file['name']))
+
+    return '; '.join(download_urls)
+
+# === Format / Service to Recommended DCAT Entry (IANA “Media Types” Vokabular) ===
+
+MEDIA_TYPES = {
+    r"\bShapefile \b": ["application/x-esri-shapefile"],
+    r"\bGeoPackage\b|\bGPKG\b": ["application/geopackage+sqlite3", "application/geopackage"],
+    r"\bGML\b": ["application/gml+xml"],
+    r"\bGeoJSON \b": ["application/geo+json"],
+    r"\bKML\b": ["application/vnd.google-earth.kml+xml"],
+    r"\bCSV\b": ["text/csv"],
+    r"\bNetCDF\b": ["application/x-netcdf"],
+    r"\bTIFF\b|\bGeoTIFF\b": ["image/tiff", "image/geotiff"],
+    r"\bJPEG2000\b|\bjp2\b": ["image/jp2"],
+    r"\bPDF\b": ["application/pdf"],
+    r"\bZIP\b": ["application/zip"],
+    r"\bXML\b": ["text/xml", "application/xml"],
+    r"\bWMS\b": ["OGC:WMS", "application/xml"],
+    r"\bWFS\b": ["OGC:WFS", "application/xml"],
+    r"\batom\b|inspire download service": ["application/atom+xml"],
+    r"\b(gdb|file geodatabase|geodatabase)\b": ["application/x-esri-filegdb"],
+    r"\bsqlite\b(?!.*geopackage)": ["application/vnd.sqlite3"],
+    r"\bjson\b(?!.*geojson)": ["application/json"],
+    r"\b(xlsx|excel)\b": ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]
+}
+
+def recommended_dcat_entry(format_service: str) -> str:
+    if not format_service:
+        return ""
+    text = format_service.lower()
+    for pattern, media_list in MEDIA_TYPES.items():
+        if re.search(pattern, text):
+            return " | ".join(media_list)   # nhiều lựa chọn -> nối bằng " | "
+    return format_service  # fallback nếu không khớp
 
 # === Einzelner Metadatensatz ===
 def extract_metadata(file_path):
@@ -344,7 +400,7 @@ def extract_metadata(file_path):
 
     # === Prüfe Download-URL erreichbar
     if not download_url:
-        download_url = "Bitte manuell angeben, direkter Download-Link fehlt"
+        download_url = get_download_urls(access_url)
     elif not check_url_reachable(download_url):
         download_url += " (Bitte manuell angeben, URL nicht erreichbar)"
 
@@ -361,8 +417,8 @@ def extract_metadata(file_path):
 
     data = {
         'Übernommen von Appsmith': '',
-        'Metadatensatz_ID': file_id,
-        'Datensatz_ID': identifier,
+        'Metadatensatz_ID': identifier, #?
+        'Datensatz_ID': file_id,    #?
         'Titel': title,
         'Beschreibung': get_text(root, './/gmd:abstract/gco:CharacterString'),
         'Kategorie': manual_data.get('Kategorie'),
@@ -381,13 +437,13 @@ def extract_metadata(file_path):
         'Veröffentlichungsdatum': get_text(root, './/gmd:date//gco:DateTime'),
         'Letzte Aktualisierung': get_text(root, './/gmd:dateStamp/gco:Date'),
         'Erstellungsdatum des Metadatensatzes': get_text(root, './/gmd:dateStamp/gco:Date'),
-        'Format': recommended_dcat_entry(get_text(root, './/gmd:distributionFormat//gmd:name/gco:CharacterString')), #lam viec voi cai nay, gan bien cho no roi lam viec voi bien
+        'Format': recommended_dcat_entry(get_text(root, './/gmd:distributionFormat//gmd:name/gco:CharacterString'))
     }
 
     # === FAIR-Erweiterung ===
     data.update({
-        'RDA-F1-01M': 'ja' if file_id else 'nein',
-        'RDA-F1-01D': 'ja' if identifier else 'nein',
+        'RDA-F1-01M': 'ja' if file_id else 'nein',  #?
+        'RDA-F1-01D': 'ja' if identifier else 'nein',   #?
         'RDA-F1-02M': 'ja' if file_id and file_id.startswith('http') else 'nein',
         'RDA-F1-02D': 'ja' if identifier and identifier.startswith('http') else 'nein',
         'RDA-F2-01M': 'ja' if all([data['Titel'], data['Beschreibung'], data['Format'], license_url]) else 'nein',
@@ -407,7 +463,7 @@ def extract_metadata(file_path):
         'RDA-R1.3-01D': check_rda_r1_3_01d(data['Format']),
         'RDA-R1.3-02M': 'ja' if 'iso' in (data['Metadatenstandard'] or '').lower() else 'nein',
         'Eintragsdatum': datetime.now().strftime('%Y-%m-%d'),
-        'Kommentar': '', 'Person': '', 'Keywords': ''
+        'Keywords': '', 'Kommentar': '', 'Person': ''
     })
 
     return data
@@ -425,43 +481,6 @@ def get_user_input():
     )
     root.destroy()
     return xml_dir, excel_file
-
-# === Format / Service to Recommended DCAT Entry (IANA “Media Types” Vokabular) ===
-
-# 1) ADD near your imports/utilities
-import re
-
-MEDIA_TYPES = {
-    r"\bShapefile \b": ["application/x-esri-shapefile"],
-    r"\bGeoPackage\b|\bGPKG\b": ["application/geopackage+sqlite3", "application/geopackage"],
-    r"\bGML\b": ["application/gml+xml"],
-    r"\bGeoJSON \b": ["application/geo+json"],
-    r"\bKML\b": ["application/vnd.google-earth.kml+xml"],
-    r"\bCSV\b": ["text/csv"],
-    r"\bNetCDF\b": ["application/x-netcdf"],
-    r"\bTIFF\b|\bGeoTIFF\b": ["image/tiff", "image/geotiff"],
-    r"\bJPEG2000\b|\bjp2\b": ["image/jp2"],
-    r"\bPDF\b": ["application/pdf"],
-    r"\bZIP\b": ["application/zip"],
-    r"\bXML\b": ["text/xml", "application/xml"],
-    r"\bWMS\b": ["OGC:WMS", "application/xml"],
-    r"\bWFS\b": ["OGC:WFS", "application/xml"],
-    r"\batom\b|inspire download service": ["application/atom+xml"],
-    r"\b(gdb|file geodatabase|geodatabase)\b": ["application/x-esri-filegdb"],
-    r"\bsqlite\b(?!.*geopackage)": ["application/vnd.sqlite3"],
-    r"\bjson\b(?!.*geojson)": ["application/json"],
-    r"\b(xlsx|excel)\b": ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]
-}
-
-def recommended_dcat_entry(format_service: str) -> str:
-    if not format_service:
-        return ""
-    text = format_service.lower()
-    for pattern, media_list in MEDIA_TYPES.items():
-        if re.search(pattern, text):
-            return " | ".join(media_list)   # nhiều lựa chọn -> nối bằng " | "
-    return format_service  # fallback nếu không khớp
-
 
 # === Hauptfunktion ===
 def main():
