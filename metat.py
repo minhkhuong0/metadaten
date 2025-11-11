@@ -417,8 +417,8 @@ def extract_metadata(file_path):
 
     data = {
         'Übernommen von Appsmith': '',
-        'Metadatensatz_ID': identifier, #?
-        'Datensatz_ID': file_id,    #?
+        'Metadatensatz_ID': identifier,
+        'Datensatz_ID': file_id,
         'Titel': title,
         'Beschreibung': get_text(root, './/gmd:abstract/gco:CharacterString'),
         'Kategorie': manual_data.get('Kategorie'),
@@ -442,28 +442,29 @@ def extract_metadata(file_path):
 
     # === FAIR-Erweiterung ===
     data.update({
-        'RDA-F1-01M': 'ja' if file_id else 'nein',  #?
-        'RDA-F1-01D': 'ja' if identifier else 'nein',   #?
+        'RDA-F1-01M': 'ja' if file_id else 'nein', #changed
+        'RDA-F1-01D': 'ja' if identifier else 'nein', #changed
         'RDA-F1-02M': 'ja' if file_id and file_id.startswith('http') else 'nein',
         'RDA-F1-02D': 'ja' if identifier and identifier.startswith('http') else 'nein',
         'RDA-F2-01M': 'ja' if all([data['Titel'], data['Beschreibung'], data['Format'], license_url]) else 'nein',
-        'RDA-F3-01M': 'ja' if identifier else 'nein',
+        'RDA-F3-01M': 'ja' if file_id or access_url else 'nein', #changed
         'RDA-A1-01M': 'ja' if download_url or access_url else 'nein',
-        'RDA-A1-02M': 'ja' if data['Kontakt E-Mail'] else 'nein',
+        'RDA-A1-02M': 'ja' if data['Kontakt E-Mail'] or download_url or access_url else 'nein', #changed
         'RDA-A1-02D': 'ja' if data['Kontakt E-Mail'] or download_url or access_url else 'nein',
         'RDA-A1-04M': 'ja' if download_url.startswith('http') else 'nein',
         'RDA-A1-04D': check_rda_a1_04d(download_url, access_url),
         'RDA-A1.1-01M': 'ja' if download_url.startswith('http') else 'nein',
         'RDA-A1.1-01D': check_rda_a1_1_01d(download_url, access_url),
-        'RDA-I1-01M': 'ja' if data['Format'] else 'nein',
+        'RDA-I1-01M': 'ja' if data['Metadatenstandard'] else 'nein', #changed
         'RDA-I1-02M': check_rda_i1_02m_etree(file_path),
         'RDA-I2-01M': check_rda_i2_01m_etree(file_path),
         'RDA-R1.1-01M': 'ja' if license_url else 'nein',
         'RDA-R1.3-01M': 'ja' if data['Metadatenstandard'] else 'nein',
         'RDA-R1.3-01D': check_rda_r1_3_01d(data['Format']),
-        'RDA-R1.3-02M': 'ja' if 'iso' in (data['Metadatenstandard'] or '').lower() else 'nein',
+        'RDA-R1.3-02M': 'ja' if any(x in str(data.get('Metadatenstandard','')).lower() #changed
+                 for x in ['iso', 'iso/ts', 'rdf', 'owl', 'xsd', 'dcat']) else 'nein',
         'Eintragsdatum': datetime.now().strftime('%Y-%m-%d'),
-        'Keywords': '', 'Kommentar': '', 'Person': ''
+        'Keywords': '', 'Kommentar': '', 'Person': '' #changed
     })
 
     return data
