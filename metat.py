@@ -275,27 +275,38 @@ def popup(title: str, geo_desc: str):
     root.mainloop()
     return result_holder['data']
 
-# === Scrape opengeodata.nrw.de for download links ===
+# === Scrape opengeodata.nrw.de for download files ===
 
-def get_download_urls(url):
+def get_url_extensions(url):
     headers = {
         'Accept': 'application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
     }
     web = requests.get(url, headers=headers, allow_redirects=True)
     if web.status_code != 200:
-        return 'Zugriffs-URL nicht erreichbar'
+        # return {'Zugriffs-URL nicht erreichbar'}
+        return None
 
     soup = BeautifulSoup(web.text, "xml")
     files = soup.find_all('files')[1]
 
+    # download_urls = []
+    # for file in files:
+    #     if file.name == None:
+    #         continue
+    #     download_urls.append(urllib.parse.urljoin(web.url,file['name']))
+
+    return [file['name'] for file in files if file.name]
+
+# === Return download files as urls
+
+def get_download_urls(url, files):
+    if files[0] == 'Zugriffs-URL nicht erreichbar':
+        return None
     download_urls = []
     for file in files:
-        if file.name == None:
-            continue
-        download_urls.append(urllib.parse.urljoin(web.url,file['name']))
+        download_urls.append(urllib.parse.urljoin(url,file))
 
-    return '; '.join(download_urls)
-
+    return download_urls
 # === Format / Service to Recommended DCAT Entry (IANA “Media Types” Vokabular) ===
 
 MEDIA_TYPES = {
@@ -397,16 +408,18 @@ def extract_metadata(file_path):
         license_url = "manuell prüfen"
 
     download_url, access_url = get_dcat_urls_strict(root)
+    download_files = []
+    download_urls = []
 
     # === Prüfe Download-URL erreichbar
     if not download_url:
-        download_url = get_download_urls(access_url)
+        download_files = get_url_extensions(access_url)
+        download_urls = get_download_urls(access_url, download_files)
+        download_url = '; '.join(download_urls)
     elif not check_url_reachable(download_url):
         download_url += " (Bitte manuell angeben, URL nicht erreichbar)"
 
     # Zugriffs-URL lassen wir unangetastet, auch wenn sie evtl. nicht erreichbar ist
-
-
 
 
     file_id = get_text(root, './/gmd:fileIdentifier/gco:CharacterString')
@@ -467,7 +480,14 @@ def extract_metadata(file_path):
         'Keywords': '', 'Kommentar': '', 'Person': '' #changed
     })
 
-    return data
+    entries = []
+    if download_files:
+        for file, url in zip(download_files, download_urls):
+            data['Titel'], data['Download-URL'] = file, url
+            entries.append(data.copy())
+    else:
+        entries.append(data)
+    return entries
 
 # === Benutzerinput & Excel-Ausgabe ===
 def get_user_input():
@@ -491,9 +511,11 @@ def main():
     files = [os.path.join(xml_dir, f) for f in os.listdir(xml_dir) if f.endswith('.xml')]
     entries = []
     for f in files:
-        data = extract_metadata(f)
-        if(f):
-            entries.append(data)
+        if f:
+            data = extract_metadata(f)
+            for d in data:
+                entries.append(d)
+
     if not entries:
         print("Keine gültigen INSPIRE-/ISO19115/19119-Metadaten gefunden.")
         return
