@@ -13,7 +13,7 @@ from uri_template import variable
 from bs4 import BeautifulSoup
 import urllib
 
-#Tháo
+#Tháom
 # === Namespaces ===
 namespaces = {
     'gmd': "http://www.isotc211.org/2005/gmd",
