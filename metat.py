@@ -13,7 +13,6 @@ from uri_template import variable
 from bs4 import BeautifulSoup
 import urllib
 
-#Tháom
 # === Namespaces ===
 namespaces = {
     'gmd': "http://www.isotc211.org/2005/gmd",
@@ -48,6 +47,7 @@ def map_license_url(freetext):
 
 # === URL-Prüfung ===
 def check_url_reachable(url):
+    return False
     if not url:
         return False
     headers = {
@@ -278,6 +278,7 @@ def popup(title: str, geo_desc: str):
 # === Scrape opengeodata.nrw.de for download files ===
 
 def get_url_extensions(url):
+    return None
     headers = {
         'Accept': 'application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
     }
@@ -413,16 +414,20 @@ def extract_metadata(file_path):
 
     # === Prüfe Download-URL erreichbar
     if not download_url:
-        download_files = get_url_extensions(access_url)
-        download_urls = get_download_urls(access_url, download_files)
-        download_url = '; '.join(download_urls)
-    elif not check_url_reachable(download_url):
+        #download_files = get_url_extensions(access_url)
+        #download_urls = get_download_urls(access_url, download_files)
+        #download_url = '; '.join(download_urls)
+        download_files = None
+        download_urls = None
+    elif False:
+        pass
+    #not check_url_reachable(download_url)
         download_url += " (Bitte manuell angeben, URL nicht erreichbar)"
 
     # Zugriffs-URL lassen wir unangetastet, auch wenn sie evtl. nicht erreichbar ist
 
 
-    file_id = get_text(root, './/gmd:fileIdentifier/gco:CharacterString')
+    metadataset_id = get_text(root, './/gmd:fileIdentifier/gco:CharacterString')
     identifier = get_text(root, './/srv:identifier/gco:CharacterString')
     title = get_text(root, './/gmd:title/gco:CharacterString')
 
@@ -431,7 +436,7 @@ def extract_metadata(file_path):
     data = {
         'Übernommen von Appsmith': '',
         'Metadatensatz_ID': identifier,
-        'Datensatz_ID': file_id,
+        'Datensatz_ID': metadataset_id,
         'Titel': title,
         'Beschreibung': get_text(root, './/gmd:abstract/gco:CharacterString'),
         'Kategorie': manual_data.get('Kategorie'),
@@ -455,12 +460,12 @@ def extract_metadata(file_path):
 
     # === FAIR-Erweiterung ===
     data.update({
-        'RDA-F1-01M': 'ja' if file_id else 'nein', #changed
+        'RDA-F1-01M': 'ja' if metadataset_id else 'nein', #changed
         'RDA-F1-01D': 'ja' if identifier else 'nein', #changed
-        'RDA-F1-02M': 'ja' if file_id and file_id.startswith('http') else 'nein',
+        'RDA-F1-02M': 'ja' if metadataset_id and metadataset_id.startswith('http') else 'nein',
         'RDA-F1-02D': 'ja' if identifier and identifier.startswith('http') else 'nein',
         'RDA-F2-01M': 'ja' if all([data['Titel'], data['Beschreibung'], data['Format'], license_url]) else 'nein',
-        'RDA-F3-01M': 'ja' if file_id or access_url else 'nein', #changed
+        'RDA-F3-01M': 'ja' if metadataset_id or access_url else 'nein', #changed
         'RDA-A1-01M': 'ja' if download_url or access_url else 'nein',
         'RDA-A1-02M': 'ja' if data['Kontakt E-Mail'] or download_url or access_url else 'nein', #changed
         'RDA-A1-02D': 'ja' if data['Kontakt E-Mail'] or download_url or access_url else 'nein',
@@ -489,17 +494,20 @@ def extract_metadata(file_path):
         entries.append(data)
     return entries
 
+
 # === Benutzerinput & Excel-Ausgabe ===
 def get_user_input():
     root = tk.Tk()
     root.withdraw()
-    xml_dir = filedialog.askdirectory(title="XML-Verzeichnis auswählen")
+    xml_dir = filedialog.askopenfilename(title="XML-Verzeichnis auswählen")
     if not xml_dir:
         return None, None
     excel_file = filedialog.asksaveasfilename(
         title="Excel-Datei speichern unter", defaultextension=".xlsx",
-        filetypes=[("Excel-Dateien", "*.xlsx")]
+        filetypes=[("Excel files", "*.xlsx"), ("Alle Dateien", "*.*")],
     )
+    print("XML input:", os.path.abspath(xml_dir))
+    print("Excel out:", os.path.abspath(excel_file))
     root.destroy()
     return xml_dir, excel_file
 
@@ -508,7 +516,8 @@ def main():
     xml_dir, excel_file = get_user_input()
     if not xml_dir or not excel_file:
         return
-    files = [os.path.join(xml_dir, f) for f in os.listdir(xml_dir) if f.endswith('.xml')]
+    files = [xml_dir] if os.path.isfile(xml_dir) else [
+    os.path.join(xml_dir, f) for f in os.listdir(xml_dir) if f.endswith('.xml')]
     entries = []
     for f in files:
         if f:
