@@ -72,10 +72,11 @@ def get_dcat_urls_strict(root):
         if url_el is not None and url_el.text:
             url = url_el.text.strip()
             url_lower = url.lower()
-            is_direct_file = any(url_lower.endswith(ext) for ext in ['.zip', '.csv', '.gml', '.xml', '.geojson', '.json'])
+            is_direct_file = any(url_lower.endswith(ext) for ext in ['.zip', '.csv', '.gml', '.xml', '.geojson', '.json', '?'])
             if is_direct_file:
                 if not download_url:
                     download_url = url
+
             else:
                 if not access_url:
                     access_url = url
@@ -277,14 +278,16 @@ def popup(title: str, geo_desc: str):
 
 # === Scrape opengeodata.nrw.de for download files ===
 
-def get_url_extensions(url):
+def get_url_extensions_nrw(url):
     headers = {
         'Accept': 'application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
     }
-    web = requests.get(url, headers=headers, allow_redirects=True)
+    try:
+        web = requests.get(url, headers=headers, allow_redirects=True)
+    except:
+        return {'Zugriffs-URL nicht erreichbar'}
     if web.status_code != 200:
-        # return {'Zugriffs-URL nicht erreichbar'}
-        return None
+        return {'Zugriffs-URL nicht erreichbar'}
 
     soup = BeautifulSoup(web.text, "xml")
     files = soup.find_all('files')[1]
@@ -299,9 +302,10 @@ def get_url_extensions(url):
 
 # === Return download files as urls
 
-def get_download_urls(url, files):
-    if files[0] == 'Zugriffs-URL nicht erreichbar':
-        return None
+def get_download_urls_nrw(url, files):
+    for f in files:
+        if f == 'Zugriffs-URL nicht erreichbar':
+            return []
     download_urls = []
     for file in files:
         download_urls.append(urllib.parse.urljoin(url,file))
@@ -413,8 +417,8 @@ def extract_metadata(file_path):
 
     # === Prüfe Download-URL erreichbar
     if not download_url:
-        download_files = get_url_extensions(access_url)
-        download_urls = get_download_urls(access_url, download_files)
+        download_files = get_url_extensions_nrw(access_url)
+        download_urls = get_download_urls_nrw(access_url, download_files)
         download_url = '; '.join(download_urls)
     elif not check_url_reachable(download_url):
         download_url += " (Bitte manuell angeben, URL nicht erreichbar)"
@@ -481,7 +485,7 @@ def extract_metadata(file_path):
     })
 
     entries = []
-    if download_files:
+    if download_urls:
         for file, url in zip(download_files, download_urls):
             data['Titel'], data['Download-URL'] = file, url
             entries.append(data.copy())
