@@ -251,6 +251,8 @@ def popup(title: str, geo_desc: str):
     result_holder = {'data': None}
 
     def next_click():
+        if idx['i'] == 1 and bundesland.get().lower() == "bayernweit":
+            return 
         if idx['i'] < len(pages) - 1:
             idx['i'] += 1
             pages[idx['i']].lift()
@@ -427,7 +429,7 @@ def extract_metadata(file_path):
     # Zugriffs-URL lassen wir unangetastet, auch wenn sie evtl. nicht erreichbar ist
 
 
-    metadataset_id = get_text(root, './/gmd:fileIdentifier/gco:CharacterString')
+    metadataset_id = get_text(root, './/gmd:MD_Metadata/gmd:fileIdentifier/gco:CharacterString')
     identifier = get_text(root, './/srv:identifier/gco:CharacterString')
     title = get_text(root, './/gmd:title/gco:CharacterString')
 
@@ -435,8 +437,8 @@ def extract_metadata(file_path):
 
     data = {
         'Übernommen von Appsmith': '',
-        'Metadatensatz_ID': identifier,
-        'Datensatz_ID': metadataset_id,
+        'Metadatensatz_ID': metadataset_id,
+        'Datensatz_ID': identifier,
         'Titel': title,
         'Beschreibung': get_text(root, './/gmd:abstract/gco:CharacterString'),
         'Kategorie': manual_data.get('Kategorie'),
@@ -510,6 +512,8 @@ def get_user_input():
     print("Excel out:", os.path.abspath(excel_file))
     root.destroy()
     return xml_dir, excel_file
+
+
 
 # === Hauptfunktion ===
 def main():
