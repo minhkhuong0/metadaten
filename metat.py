@@ -252,6 +252,9 @@ def popup(title: str, geo_desc: str):
     result_holder = {'data': None}
 
     def next_click():
+        if idx['i'] == 1 and bundesland.get() not in BUNDESLAENDER:
+            tk.messagebox.showerror("Fehler", "Bitte wählen Sie ein gültiges Bundesland aus der Liste.")
+            return 
         if idx['i'] < len(pages) - 1:
             idx['i'] += 1
             pages[idx['i']].lift()
@@ -428,6 +431,8 @@ def extract_metadata(file_path):
 
     file_id = get_text(root, './/gmd:fileIdentifier/gco:CharacterString')
     identifier = get_text(root, './/srv:identifier/gco:CharacterString')
+    if not identifier:
+        identifier = get_text(root, './/gmd:identifier//gco:CharacterString')
     title = get_text(root, './/gmd:title/gco:CharacterString')
 
     manual_data = popup(title, geo_desc)
